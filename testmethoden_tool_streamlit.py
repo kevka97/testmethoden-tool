@@ -3,6 +3,9 @@ import pandas as pd
 from io import BytesIO
 import datetime
 
+# Audi-Logo einfügen (Logo-Datei muss im selben Ordner liegen)
+st.image("audi_logo.png", width=150)
+
 # Dark Mode Toggle (klein & sichtbar in der Kopfzeile)
 col1, col2 = st.columns([6, 1])  # Hauptbereich + kleine Spalte für den Toggle
 with col2:
@@ -65,15 +68,15 @@ def display_test_method(name, description, problems, best_practices, tools):
     st.markdown(f"### {name}")
     st.write(f"**Beschreibung:** {description}")
 
-    st.write("Häufige Probleme")
+    st.write("Häufige Probleme:")
     for problem in problems:
         st.markdown(f"- {problem}")
 
-    st.write("Best Practices")
+    st.write("Best Practices:")
     for practice in best_practices:
         st.markdown(f"- {practice}")
 
-    st.write("Eingesetzte Tools")
+    st.write("Eingesetzte Tools:")
     for tool_category, tool_list in tools.items():
         st.markdown(f"- **{tool_category}**: {', '.join(tool_list)}")
 
@@ -147,32 +150,68 @@ if submit_button:
             ["Tests unter produktionsnahen Bedingungen durchführen", "Komplexe Benutzerworkflows testen", "Automatisierung wo sinnvoll nutzen"],
             {"Testautomatisierung": ["Selenium", "Playwright", "Cypress"]}
         )
-# Excel Export-Funktion
-if test_recommendations:
-    df = pd.DataFrame(test_recommendations)
 
-    # Formatierte Excel-Datei erstellen
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, sheet_name="Testmethoden", index=False)
+# Formatierte Excel-Datei erstellen (fix für die verschobene Zeile 4)
+output = BytesIO()
+with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+    workbook = writer.book
+    worksheet = workbook.add_worksheet("Testmethoden")
+    writer.sheets["Testmethoden"] = worksheet
 
-        # Formatierung optimieren
-        workbook = writer.book
-        worksheet = writer.sheets["Testmethoden"]
+    # Sicherstellen, dass System-/Service-Name & Beschreibung nicht leer sind
+    system_name = system_name if system_name else "Nicht angegeben"
+    system_description = system_description if system_description else "Keine Beschreibung vorhanden"
 
-        # Spaltenbreite automatisch anpassen
-        for i, col in enumerate(df.columns):
-            max_len = max(df[col].astype(str).apply(len).max(), len(col)) + 2
+    # Standardformat (ohne Rahmen)
+    cell_format = workbook.add_format({'border': 0})  # Kein Rahmen
+    header_format = workbook.add_format({'bold': False, 'border': 0})  # Kein Rahmen & nicht fett
+
+
+    # System-/Service-Name & Beschreibung platzieren
+    worksheet.write(0, 0, "System-/Service-Name:", cell_format)
+    worksheet.write(0, 1, system_name, cell_format)
+    worksheet.write(1, 0, "Beschreibung:", cell_format)
+    worksheet.write(1, 1, system_description, cell_format)
+
+    # Testmethoden-Übersicht (Falls keine Empfehlungen existieren, wird das verhindert)
+    if test_recommendations:
+        test_data = {"": ["Beschreibung", "Häufige Probleme", "Best Practices", "Eingesetzte Tools"]}
+
+        for rec in test_recommendations:
+            test_name = rec.get("Testmethode", "Unbenannte Methode")
+            test_data[test_name] = [
+                rec.get("Beschreibung", ""),
+                rec.get("Häufige Probleme", ""),
+                rec.get("Best Practices", ""),
+                rec.get("Eingesetzte Tools", "")
+            ]
+
+        df_tests = pd.DataFrame.from_dict(test_data, orient="index").transpose()
+
+        # A4 leer lassen
+        worksheet.write(3, 0, "", cell_format)
+
+        # Testmethoden ab Zeile 4 einfügen, um Platz für die System-Info zu lassen
+        df_tests.to_excel(writer, sheet_name="Testmethoden", index=False, startrow=3, startcol=0)
+
+        # Spaltenbreite optimieren
+        for i, col in enumerate(df_tests.columns):
+            max_len = max(df_tests[col].astype(str).apply(len).max(), len(col)) + 2
             worksheet.set_column(i, i, max_len)
 
-    output.seek(0)
+        # Zeilenhöhe für bessere Lesbarkeit
+        for row_num in range(4, len(df_tests) + 5):
+            worksheet.set_row(row_num, 25)
 
-    # Download-Button für die Excel-Datei
+output.seek(0)
+
+# Download-Button für die Excel-Datei (nur anzeigen, wenn Testmethoden empfohlen wurden)
+if test_recommendations:
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     file_name = f"Testmethoden_Empfehlung_{timestamp}.xlsx"
 
     st.download_button(
-        label="📥 Empfehlungen als Excel herunterladen",
+        label="Als Excel herunterladen",
         data=output,
         file_name=file_name,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
